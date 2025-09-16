@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+extractor:
+build: ./backend
+container_name: pdf-extractor
+ports:
+- "5000:5000"
+volumes:
+- data:/data # persists uploads & outputs
+restart: unless-stopped
+
+
+volumes:
+data:

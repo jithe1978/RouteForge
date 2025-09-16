@@ -1,0 +1,6 @@
+flask
+flask-cors
+pandas
+PyPDF2
+openpyxl
+gunicorn
