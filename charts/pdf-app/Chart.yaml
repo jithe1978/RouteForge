@@ -1,0 +1,4 @@
+apiVersion: v2
+name: pdf-app
+version: 0.1.0
+description: Frontend + Backend for PDF→Excel app (EKS)

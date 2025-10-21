@@ -5,61 +5,81 @@ pipeline {
     ACCOUNT_ID = '577999460012'
     ECR_FRONT = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-frontend"
     ECR_BACK  = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-backend"
-    CHART_APP = 'charts/pdf-app'
-    CHART_ING = 'charts/ingress'              // your existing ingress chart path
+    CHART_APP = 'charts/pdf-app'      // <-- your new chart path
+    CHART_ING = 'charts/ingress'      // <-- your existing ingress chart path
     NAMESPACE = 'pdfapp'
-    EKS_CLUSTER = 'mern-app-cluster'
+    EKS_CLUSTER = 'mern-app-cluster'   // <-- fill this in
   }
+
   stages {
-    stage('Checkout'){ steps { checkout scm } }
+    stage('Checkout') {
+      steps { checkout scm }
+    }
 
-    stage('Login ECR'){
+    stage('Login to ECR') {
       steps {
-        sh """
-          aws ecr get-login-password --region ${AWS_DEFAULT_REGION} \
-          | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
-        """
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          $env:AWS_PAGER = ""
+          aws ecr get-login-password --region $env:AWS_DEFAULT_REGION |
+            docker login --username AWS --password-stdin "$($env:ACCOUNT_ID).dkr.ecr.$($env:AWS_DEFAULT_REGION).amazonaws.com"
+        '''
       }
     }
 
-    stage('Build & Push Images'){
+    stage('Build & Push Images') {
       steps {
-        sh """
+        powershell '''
+          $ErrorActionPreference = "Stop"
+
           # FRONTEND (expects .env.production with VITE_API_BASE=/api)
-          docker build -t pdf-frontend:prod ./frontend
-          docker tag  pdf-frontend:prod ${ECR_FRONT}:prod
-          docker push ${ECR_FRONT}:prod
+          Push-Location frontend
+          docker build -t pdf-frontend:prod .
+          docker tag  pdf-frontend:prod "$env:ECR_FRONT:prod"
+          docker push "$env:ECR_FRONT:prod"
+          Pop-Location
 
-          # BACKEND (gunicorn on :5000)
-          docker build -t pdf-backend:prod ./backend
-          docker tag  pdf-backend:prod ${ECR_BACK}:prod
-          docker push ${ECR_BACK}:prod
-        """
+          # BACKEND (Flask/Gunicorn on :5000)
+          Push-Location backend
+          docker build -t pdf-backend:prod .
+          docker tag  pdf-backend:prod "$env:ECR_BACK:prod"
+          docker push "$env:ECR_BACK:prod"
+          Pop-Location
+        '''
       }
     }
 
-    stage('Kube Config'){
+    stage('Update kubeconfig') {
       steps {
-        sh "aws eks update-kubeconfig --name ${EKS_CLUSTER} --region ${AWS_DEFAULT_REGION}"
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          aws eks update-kubeconfig --name $env:EKS_CLUSTER --region $env:AWS_DEFAULT_REGION
+          kubectl version --client
+          helm version
+        '''
       }
     }
 
-    stage('Deploy App (Helm)'){
+    stage('Deploy App (Helm)') {
       steps {
-        sh """
-          helm upgrade --install pdf-app ${CHART_APP} -n ${NAMESPACE} --create-namespace \
-            --set images.frontend=${ECR_FRONT}:prod \
-            --set images.backend=${ECR_BACK}:prod
-        """
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          helm upgrade --install pdf-app $env:CHART_APP -n $env:NAMESPACE --create-namespace `
+            --set images.frontend="$env:ECR_FRONT:prod" `
+            --set images.backend="$env:ECR_BACK:prod"
+          kubectl -n $env:NAMESPACE get deploy,svc,pods -o wide
+        '''
       }
     }
 
-    stage('Deploy Ingress (Helm)'){
+    stage('Deploy Ingress (Helm)') {
       steps {
-        sh """
-          helm upgrade --install pdfapp-ingress ${CHART_ING} \
-            -f pdfapp-ingress-values.yaml
-        """
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          # Reuse your existing ingress chart + the PDF app values file at repo root
+          helm upgrade --install pdfapp-ingress $env:CHART_ING -f pdfapp-ingress-values.yaml
+          kubectl -n $env:NAMESPACE get ingress
+        '''
       }
     }
   }
