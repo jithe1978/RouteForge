@@ -1,0 +1,66 @@
+pipeline {
+  agent any
+  environment {
+    AWS_DEFAULT_REGION = 'us-east-2'
+    ACCOUNT_ID = '577999460012'
+    ECR_FRONT = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-frontend"
+    ECR_BACK  = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-backend"
+    CHART_APP = 'charts/pdf-app'
+    CHART_ING = 'charts/ingress'              // your existing ingress chart path
+    NAMESPACE = 'pdfapp'
+    EKS_CLUSTER = 'mern-app-cluster'
+  }
+  stages {
+    stage('Checkout'){ steps { checkout scm } }
+
+    stage('Login ECR'){
+      steps {
+        sh """
+          aws ecr get-login-password --region ${AWS_DEFAULT_REGION} \
+          | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+        """
+      }
+    }
+
+    stage('Build & Push Images'){
+      steps {
+        sh """
+          # FRONTEND (expects .env.production with VITE_API_BASE=/api)
+          docker build -t pdf-frontend:prod ./frontend
+          docker tag  pdf-frontend:prod ${ECR_FRONT}:prod
+          docker push ${ECR_FRONT}:prod
+
+          # BACKEND (gunicorn on :5000)
+          docker build -t pdf-backend:prod ./backend
+          docker tag  pdf-backend:prod ${ECR_BACK}:prod
+          docker push ${ECR_BACK}:prod
+        """
+      }
+    }
+
+    stage('Kube Config'){
+      steps {
+        sh "aws eks update-kubeconfig --name ${EKS_CLUSTER} --region ${AWS_DEFAULT_REGION}"
+      }
+    }
+
+    stage('Deploy App (Helm)'){
+      steps {
+        sh """
+          helm upgrade --install pdf-app ${CHART_APP} -n ${NAMESPACE} --create-namespace \
+            --set images.frontend=${ECR_FRONT}:prod \
+            --set images.backend=${ECR_BACK}:prod
+        """
+      }
+    }
+
+    stage('Deploy Ingress (Helm)'){
+      steps {
+        sh """
+          helm upgrade --install pdfapp-ingress ${CHART_ING} \
+            -f pdfapp-ingress-values.yaml
+        """
+      }
+    }
+  }
+}
