@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: {{ .Values.images.frontend }}
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: {{ .Values.frontend.port }}, name: http }]
+          resources:
+{{ toYaml .Values.resources.frontend | indent 12 }}

@@ -1,109 +1,67 @@
-import os
-import re
-import pandas as pd
-import argparse
+import os, re, argparse
 from datetime import datetime
-from PyPDF2 import PdfReader
 from collections import OrderedDict
+import pandas as pd
+from PyPDF2 import PdfReader
 
 def extract_order_details(pdf_path):
-    # Initialize a list to store orders
     orders = []
-
-    # Open the PDF
     reader = PdfReader(pdf_path)
-    num_pages = len(reader.pages)
-
-    # Regex patterns to extract relevant information
     delivery_section_pattern = re.compile(r'Online Ordering - (.*?)(?=Online Ordering|Guests|Expected Time)', re.DOTALL)
     phone_pattern = re.compile(r'\d{3}-\d{3}-\d{4}')
-    ##name_pattern = re.compile(r'([A-Za-z]+\s[A-Za-z]+)(?=\n| \()', re.DOTALL)  # Match first and last name
-    #name_pattern = re.compile(r'([A-Za-z ,.\'-]+)(?=\n| \()', re.DOTALL)  # Match the full name with spaces and common punctuation
     name_pattern = re.compile(r'(?<!\S)([A-Za-z ,.\'-]+)(?=\n| \(|$)', re.DOTALL)
-
     address_pattern = re.compile(r'(\d{1,5}\s[\w\s,.]+(?:\n.*\w+,\s\w+\s\d{5}))', re.DOTALL)
     fallback_address_pattern = re.compile(r'([\w\s,.]+, \w+, \w+ \d{5})')
-    email_pattern = re.compile(r'\S+@\S+')  # Matches email addresses
-    details_pattern = re.compile(r'\(detail\)')  # Matches "(detail)" text
+    email_pattern = re.compile(r'\S+@\S+')
+    details_pattern = re.compile(r'\(detail\)')
 
-    # Loop through all pages
-    for page_num in range(num_pages):
-        page = reader.pages[page_num].extract_text()
-
-        # Find all delivery sections
-        delivery_sections = delivery_section_pattern.findall(page)
-
-        for section in delivery_sections:
+    for page in reader.pages:
+        text = page.extract_text()
+        if not text:
+            continue
+        for section in delivery_section_pattern.findall(text):
             order = OrderedDict()
-
-            # Extract name (ensure it captures only names and ignores other fields)
-            name_match = name_pattern.search(section)
-            if name_match:
-                order['Name'] = name_match.group().strip()
-            else:
-                order['Name'] = "Unknown Name"
-
-            # Extract phone number
-            phone_match = phone_pattern.search(section)
-            if phone_match:
-                order['Phone'] = phone_match.group()
-
-            # Try extracting the address using the primary pattern
-            address_match = address_pattern.search(section)
-            if not address_match:
-                # If the primary pattern fails, try the fallback pattern
-                address_match = fallback_address_pattern.search(section)
-
-            if address_match:
-                address = address_match.group().strip()
-
-                # Remove phone number, name, emails, and details from the address
-                address = re.sub(order['Phone'], '', address)  # Remove phone number from address
-                address = re.sub(order['Name'], '', address)  # Remove name from address
-                address = re.sub(email_pattern, '', address)  # Remove email addresses
-                address = re.sub(details_pattern, '', address).strip()  # Remove "(detail)"
-
-                # Clean up extra spaces or line breaks
+            m = name_pattern.search(section)
+            order['Name'] = m.group().strip() if m else "Unknown Name"
+            m = phone_pattern.search(section)
+            if m:
+                order['Phone'] = m.group()
+            am = address_pattern.search(section) or fallback_address_pattern.search(section)
+            if am and 'Phone' in order:
+                address = am.group().strip()
+                address = re.sub(order['Phone'], '', address)
+                address = re.sub(order['Name'], '', address)
+                address = re.sub(email_pattern, '', address)
+                address = re.sub(details_pattern, '', address).strip()
                 order['Address'] = ' '.join(address.split())
-
-            # Append the order details to the list if name and phone are found
             if 'Phone' in order:
                 orders.append(order)
-
     return orders
 
 def main():
-    # Setup argument parser
-    parser = argparse.ArgumentParser(description="Extract order details from a PDF file and save to Excel.")
-    parser.add_argument("pdf_path", help="Path to the PDF file to process")
+    p = argparse.ArgumentParser(description="Extract order details from a PDF and write to Excel.")
+    p.add_argument("pdf_path", nargs="?", help="Input PDF (positional alternative to --input)")
+    p.add_argument("--input", help="Input PDF path")
+    p.add_argument("--output", help="Output Excel path")
+    args = p.parse_args()
 
-    args = parser.parse_args()
+    pdf_in = args.input or args.pdf_path
+    if not pdf_in:
+        p.error("Provide PDF via positional arg or --input")
 
-    # Extract order details
-    order_details = extract_order_details(args.pdf_path)
+    orders = extract_order_details(pdf_in)
+    df = pd.DataFrame(orders or [], columns=["Name","Phone","Address"])
 
-    # Check if any orders were extracted
-    if not order_details:
-        print("No order details were extracted from the PDF.")
-        return
+    out_path = args.output
+    if not out_path:
+        # default next to input
+        base = os.path.splitext(os.path.basename(pdf_in))[0]
+        out_dir = os.path.dirname(pdf_in)
+        out_path = os.path.join(out_dir, f"{base}_order_details_{datetime.now():%Y-%m-%d}.xlsx")
 
-    # Convert the list of orders into a pandas DataFrame
-    df = pd.DataFrame(order_details)
-
-    # Get the current date and format it as YYYY-MM-DD
-    current_date = datetime.now().strftime("%Y-%m-%d")
-
-    # Create the output folder if it does not exist
-    output_folder = "output"
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Set the output Excel path
-    output_excel_path = os.path.join(output_folder, f"order_details_{current_date}.xlsx")
-
-    # Save the DataFrame to an Excel file in the output folder
-    df.to_excel(output_excel_path, index=False)
-
-    print(f"Order details saved to {output_excel_path}")
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    df.to_excel(out_path, index=False)
+    print(f"Saved: {out_path}", flush=True)
 
 if __name__ == "__main__":
     main()

@@ -1,63 +1,53 @@
-import os
-import time
-from datetime import datetime
+# app.py
 from flask import Flask, request, jsonify, send_from_directory
+from datetime import datetime
 from flask_cors import CORS
-import pandas as pd
-
-
-# Import your extractor function
-from Extract_name_phone_address_toast import extract_order_details
-
-
-DATA_ROOT = "/data" # persisted via Docker volume or EFS in ECS
-UPLOAD_DIR = os.path.join(DATA_ROOT, "uploads")
-OUTPUT_DIR = os.path.join(DATA_ROOT, "output")
-
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+import os, uuid, subprocess
 
 app = Flask(__name__)
-CORS(app) # allow requests from your React dev server
+CORS(app)
 
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/data")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-@app.route("/health", methods=["GET"])
+@app.get("/health")
 def health():
-return {"ok": True, "service": "pdf-extractor", "time": time.time()}
+    return {"ok": True}
 
+@app.post("/extract")
+def extract():
+    f = request.files.get("file")
+    if not f:
+        return ("No file", 400)
 
-@app.route("/upload", methods=["POST"])
-def upload():
-if "file" not in request.files:
-return jsonify({"ok": False, "error": "No file part"}), 400
+    # Save uploaded PDF
+    in_path = os.path.join(OUTPUT_DIR, f"in-{uuid.uuid4().hex}.pdf")
+    f.save(in_path)
 
+    # Date-stamped Excel name with collision handling
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    base = f"order_details_{stamp}.xlsx"
+    out_path = os.path.join(OUTPUT_DIR, base)
+    n = 2
+    while os.path.exists(out_path):
+        out_path = os.path.join(OUTPUT_DIR, f"order_details_{stamp}({n}).xlsx")
+        n += 1
 
-f = request.files["file"]
-if f.filename == "":
-return jsonify({"ok": False, "error": "No selected file"}), 400
+    try:
+        cmd = ["python", "Extract_name_phone_address_toast.py", "--input", in_path, "--output", out_path]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, cwd="/app")
+        if proc.returncode != 0:
+            return (f"Extractor failed:\n{proc.stderr or proc.stdout}", 500)
+        return jsonify({"message": "Uploaded & extracted.", "output": os.path.basename(out_path)})
+    except subprocess.TimeoutExpired:
+        return ("Extractor timed out", 504)
+    except Exception as e:
+        return (f"Server error: {e}", 500)
 
+@app.get("/output")
+def list_output():
+    return jsonify({"files": sorted(os.listdir(OUTPUT_DIR))})
 
-# Save incoming PDF
-ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-pdf_name = f"upload_{ts}.pdf"
-pdf_path = os.path.join(UPLOAD_DIR, pdf_name)
-f.save(pdf_path)
-
-
-# Extract records via your script
-try:
-records = extract_order_details(pdf_path)
-except Exception as e:
-return jsonify({"ok": False, "error": f"Extractor failed: {e}"}), 500
-
-
-if not records:
-return jsonify({"ok": True, "records": 0, "message": "No order details were extracted."}), 200
-
-
-# Save to Excel in OUTPUT_DIR
-df = pd.DataFrame(records)
-excel_name = f"order_details_{ts}.xlsx"
-app.run(host="0.0.0.0", port=5000)
+@app.get("/output/<path:name>")
+def download_output(name):
+    return send_from_directory(OUTPUT_DIR, name, as_attachment=True)

@@ -1,72 +1,78 @@
-import { useState } from "react";
+// src/App.jsx
+import React, { useState } from "react";
 
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:5000";
 
+export default function App() {
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [files, setFiles] = useState([]);
 
-const fetchOutputs = async () => {
-setLoadingOutputs(true);
-try {
-const res = await fetch(`${API}/outputs`);
-const data = await res.json();
-if (data.ok) {
-setOutputs(data.files || []);
-} else {
-setOutputs([]);
+  const onFileChange = (e) => setFile(e.target.files?.[0] ?? null);
+
+  async function handleUpload(e) {
+    e.preventDefault();
+    if (!file) {
+      setMessage("Choose a PDF first.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}/extract`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json().catch(() => ({}));
+      setMessage(data.message ?? "Uploaded & extracted.");
+    } catch (err) {
+      setMessage(`Upload failed: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function listOutput() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE}/output`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const list = Array.isArray(data?.files) ? data.files : Array.isArray(data) ? data : [];
+      setFiles(list);
+      setMessage(`Found ${list.length} files.`);
+    } catch (err) {
+      setMessage(`List failed: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 720, margin: "2rem auto", fontFamily: "system-ui, sans-serif" }}>
+      <h1>PDF → Excel Extractor</h1>
+
+      <form onSubmit={handleUpload} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+        <input type="file" accept="application/pdf" onChange={onFileChange} />
+        <button type="submit" disabled={busy}>Upload & Extract</button>
+        <button type="button" onClick={listOutput} disabled={busy}>Show Output Folder</button>
+      </form>
+
+      {message && <p style={{ marginTop: "1rem" }}>{message}</p>}
+
+      {files.length > 0 && (
+        <ul style={{ marginTop: "1rem" }}>
+          {files.map((name) => (
+            <li key={name}>
+              <a href={`${API_BASE}/output/${encodeURIComponent(name)}`} target="_blank" rel="noreferrer">
+                {name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
-} catch (e) {
-setOutputs([]);
-} finally {
-setLoadingOutputs(false);
-}
-};
-
-
-return (
-<div style={{ maxWidth: 620, margin: "2rem auto", fontFamily: "system-ui, sans-serif" }}>
-<h1>PDF → Excel Extractor</h1>
-
-
-<form onSubmit={onSubmit}>
-<input
-type="file"
-accept="application/pdf"
-onChange={(e) => setFile(e.target.files?.[0] || null)}
-/>
-<div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-<button type="submit">Upload & Extract</button>
-<button type="button" onClick={fetchOutputs}>
-{loadingOutputs ? "Loading…" : "Show Output Folder"}
-</button>
-</div>
-</form>
-
-
-{status && <p style={{ marginTop: 16 }}>{status}</p>}
-
-
-<hr style={{ margin: "1rem 0" }} />
-
-
-<h2 style={{ marginBottom: 8 }}>Output Files</h2>
-{outputs.length === 0 ? (
-<p style={{ opacity: 0.8 }}>No Excel files yet. Click “Show Output Folder”.</p>
-) : (
-<ul>
-{outputs.map((f) => (
-<li key={f.url} style={{ marginBottom: 6 }}>
-<a href={`${API}${f.url}`} target="_blank" rel="noreferrer">
-{f.filename}
-</a>
-<span style={{ marginLeft: 8, opacity: 0.7 }}>
-• {fmtBytes(f.size_bytes)} • {new Date(f.modified_ts * 1000).toLocaleString()}
-</span>
-</li>
-))}
-</ul>
-)}
-
-
-<p style={{ marginTop: 8 }}>
-API health: <a href={`${API}/health`} target="_blank" rel="noreferrer">/health</a>
-</p>
-</div>
-);

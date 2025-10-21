@@ -1,0 +1,19 @@
+ingress:
+  enabled: true
+  name: ingress-pdfapp
+  namespace: pdfapp
+  ingressClassName: nginx
+  host: mldevops.org
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+  tls:
+    enabled: true
+    secretName: mldevops-org-tls
+  rules:
+    - path: "/api"
+      service: { name: backend, port: 5000 }
+    - path: "/"
+      service: { name: frontend, port: 80 }

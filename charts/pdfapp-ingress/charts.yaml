@@ -1,0 +1,4 @@
+apiVersion: v2
+name: pdfapp-ingress
+description: Ingress for pdf-app (mldevops.org)
+version: 0.1.0
