@@ -137,7 +137,7 @@ stage('Deploy App (Helm)') {
         powershell '''
           $ErrorActionPreference = "Stop"
           # Reuse your existing ingress chart + the PDF app values file at repo root
-          helm upgrade --install pdfapp-ingress ./$env:CHART_ING -f ./$env:CHART_ING/ingress-rules.yaml
+          helm upgrade --install pdfapp-ingress ./$env:CHART_ING
           kubectl -n $env:NAMESPACE get ingress
         '''
       }
