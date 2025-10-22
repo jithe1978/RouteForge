@@ -60,9 +60,10 @@ stage('Login to ECR') {
 stage('Build Backend Image') {
   steps {
     dir('backend') {
-      powershell '''
-        docker build -t $Env:ECR_BACK:$Env:IMAGE_TAG .
-      '''
+      // Use Groovy interpolation (triple double-quotes)
+      powershell """
+        docker build -t ${env.ECR_BACK}:${env.IMAGE_TAG} .
+      """
     }
   }
 }
@@ -71,9 +72,10 @@ stage('Build Backend Image') {
 stage('Build Frontend Image') {
   steps {
     dir('frontend') {
-      powershell '''
-        docker build -t $Env:ECR_FRONT:$Env:IMAGE_TAG .
-      '''
+      // Use Groovy interpolation (triple double-quotes)
+      powershell """
+        docker build -t ${env.ECR_FRONT}:${env.IMAGE_TAG} .
+      """
     }
   }
 }
