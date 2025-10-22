@@ -18,13 +18,14 @@ pipeline {
 
 stage('Login to ECR') {
   steps {
-    withAWS(credentials: 'aws-creds', region: "${env.AWS_REGION}") {
+    withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
       powershell '''
         $ErrorActionPreference = "Stop"
-        $acct = (aws sts get-caller-identity --query Account --output text)
-        $registry = "$acct.dkr.ecr.${Env:AWS_REGION}.amazonaws.com"
 
-        $pass = aws ecr get-login-password --region $Env:AWS_REGION
+        $acct = (aws sts get-caller-identity --query Account --output text)
+        $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+
+        $pass = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
         if (-not $pass) { throw "Empty ECR login password" }
 
         docker logout $registry 2>$null | Out-Null
@@ -33,6 +34,7 @@ stage('Login to ECR') {
     }
   }
 }
+
     stage('Build & Push Images') {
       steps {
         powershell '''
