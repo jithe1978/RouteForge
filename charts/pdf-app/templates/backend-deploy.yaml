@@ -43,3 +43,4 @@ spec:
           emptyDir:
             {{- if .Values.backend.storage.emptyDirSize }}
             sizeLimit: {{ .Values.backend.storage.emptyDirSize | quote }}
+            {{- end }}
