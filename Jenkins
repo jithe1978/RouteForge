@@ -125,7 +125,7 @@ stage('Deploy App (Helm)') {
       helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE `
         --set images.frontend="$Env:ECR_FRONT:$Env:IMAGE_TAG" `
         --set images.backend="$Env:ECR_BACK:$Env:IMAGE_TAG" `
-        --atomic --wait --timeout 5m
+        --wait --timeout 10m  // <-- Removed --atomic, increased timeout to 10m
     '''
   }
 }
