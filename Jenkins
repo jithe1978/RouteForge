@@ -119,12 +119,15 @@ stage('Create Namespace') {
 }
 
 // 2. Modified Deployment Stage (Safest Option)
+// In the 'Deploy App (Helm)' stage
 stage('Deploy App (Helm)') {
   steps {
     powershell '''
       helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE `
-        --set images.frontend="$Env:ECR_FRONT:$Env:IMAGE_TAG" `
-        --set images.backend="$Env:ECR_BACK:$Env:IMAGE_TAG" `
+        --set images.frontend.repository="$Env:ECR_FRONT" ` 
+        --set images.frontend.tag="$Env:IMAGE_TAG" ` 
+        --set images.backend.repository="$Env:ECR_BACK" ` 
+        --set images.backend.tag="$Env:IMAGE_TAG" ` 
         --wait --timeout 10m
     '''
   }

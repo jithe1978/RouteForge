@@ -1,8 +1,12 @@
 namespace: pdfapp
 
 images:
-  frontend: "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-frontend:prod"
-  backend:  "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-backend:prod"
+  frontend: 
+    repository: "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-frontend"
+    tag: "prod"
+  backend: 
+    repository: "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-backend"
+    tag: "prod"
 
 frontend:
   replicas: 1
