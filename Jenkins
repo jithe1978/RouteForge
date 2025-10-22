@@ -82,8 +82,8 @@ stage('Build Frontend Image') {
 stage('Push Images') {
   steps {
     powershell '''
-      docker push $Env:ECR_BACK:$Env:IMAGE_TAG
-      docker push $Env:ECR_FRONT:$Env:IMAGE_TAG
+      docker push ${env.ECR_BACK}:${env.IMAGE_TAG}
+      docker push ${env.ECR_FRONT}:${env.IMAGE_TAG}
     '''
   }
 }
