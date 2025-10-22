@@ -26,16 +26,7 @@ stage('Compute IMAGE_TAG') {
     '''
   }
 }
-stage('Compute IMAGE_TAG') {
-  steps {
-    powershell '''
-      $sha  = (git rev-parse --short HEAD).Trim()
-      $date = Get-Date -Format "yyyyMMdd-HHmm"
-      $Env:IMAGE_TAG = "$sha-$date"
-      Write-Host "IMAGE_TAG = $Env:IMAGE_TAG"
-    '''
-  }
-}
+
 stage('Login to ECR') {
   steps {
     withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
