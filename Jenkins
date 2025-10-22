@@ -27,6 +27,17 @@ stage('Compute IMAGE_TAG') {
   }
 }
 
+stage('Echo Vars') {
+  steps {
+    powershell '''
+      Write-Host "ECR_BACK   = $Env:ECR_BACK"
+      Write-Host "ECR_FRONT  = $Env:ECR_FRONT"
+      Write-Host "IMAGE_TAG  = $Env:IMAGE_TAG"
+    '''
+  }
+}
+
+
 stage('Login to ECR') {
   steps {
     withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
@@ -49,28 +60,28 @@ stage('Login to ECR') {
 stage('Build Backend Image') {
   steps {
     dir('backend') {
-      powershell '''
-        docker build -t ${Env:ECR_BACKEND}:${Env:IMAGE_TAG} .
-      '''
-    }
+  powershell '''
+    docker build -t ${Env:ECR_BACK}:${Env:IMAGE_TAG} .
+  '''
+}
   }
 }
 
 stage('Build Frontend Image') {
   steps {
     dir('frontend') {
-      powershell '''
-        docker build -t ${Env:ECR_FRONTEND}:${Env:IMAGE_TAG} .
-      '''
-    }
+  powershell '''
+    docker build -t ${Env:ECR_FRONT}:${Env:IMAGE_TAG} .
+  '''
+}
   }
 }
 
 stage('Push Images') {
   steps {
     powershell '''
-      docker push ${Env:ECR_BACKEND}:${Env:IMAGE_TAG}
-      docker push ${Env:ECR_FRONTEND}:${Env:IMAGE_TAG}
+      docker push ${Env:ECR_BACK}:${Env:IMAGE_TAG}
+      docker push ${Env:ECR_FRONT}:${Env:IMAGE_TAG}
     '''
   }
 }
@@ -90,8 +101,8 @@ stage('Push Images') {
   steps {
     powershell '''
       helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE --create-namespace `
-        --set images.frontend="${Env:ECR_FRONTEND}:${Env:IMAGE_TAG}" `
-        --set images.backend="${Env:ECR_BACKEND}:${Env:IMAGE_TAG}"
+        --set images.frontend="${Env:ECR_FRONT}:${Env:IMAGE_TAG}" `
+        --set images.backend="${Env:ECR_BACK}:${Env:IMAGE_TAG}"
     '''
   }
 }
