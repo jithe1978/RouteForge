@@ -16,16 +16,18 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Login to ECR') {
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
-          $env:AWS_PAGER = ""
-          aws ecr get-login-password --region $env:AWS_DEFAULT_REGION |
-            docker login --username AWS --password-stdin "$($env:ACCOUNT_ID).dkr.ecr.$($env:AWS_DEFAULT_REGION).amazonaws.com"
-        '''
-      }
+stage('Login to ECR') {
+  steps {
+    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod-creds']]) {
+      powershell '''
+        $ErrorActionPreference = "Stop"
+        $env:AWS_DEFAULT_REGION = "$env:AWS_DEFAULT_REGION"
+        aws ecr get-login-password --region $env:AWS_DEFAULT_REGION |
+          docker login --username AWS --password-stdin "$($env:ACCOUNT_ID).dkr.ecr.$($env:AWS_DEFAULT_REGION).amazonaws.com"
+      '''
     }
+  }
+}
 
     stage('Build & Push Images') {
       steps {
