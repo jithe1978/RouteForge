@@ -6,7 +6,7 @@ pipeline {
     ECR_FRONT = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-frontend"
     ECR_BACK  = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-backend"
     CHART_APP = 'charts/pdf-app'      // <-- your new chart path
-    CHART_ING = 'charts/ingress'      // <-- your existing ingress chart path
+    CHART_ING = 'charts/pdfapp-ingress'      // <-- your existing ingress chart path
     NAMESPACE = 'pdfapp'
     EKS_CLUSTER = 'mern-app-cluster'   // <-- fill this in
   }
