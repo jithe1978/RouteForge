@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: {{ .Values.images.backend }}
+          image: "{{ .Values.images.backend }}"
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: {{ .Values.backend.port }}, name: http }]
           env:
