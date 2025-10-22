@@ -18,16 +18,24 @@ pipeline {
 
 stage('Login to ECR') {
   steps {
-    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod-creds']]) {
+    withCredentials([usernamePassword(
+        credentialsId: 'aws-creds',               // <-- matches your screenshot
+        usernameVariable: 'AWS_ACCESS_KEY_ID',
+        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+    )]) {
       powershell '''
         $ErrorActionPreference = "Stop"
-        $env:AWS_DEFAULT_REGION = "$env:AWS_DEFAULT_REGION"
+        $env:AWS_PAGER = ""
+        # region already in env from the pipeline
+        aws sts get-caller-identity
+
         aws ecr get-login-password --region $env:AWS_DEFAULT_REGION |
           docker login --username AWS --password-stdin "$($env:ACCOUNT_ID).dkr.ecr.$($env:AWS_DEFAULT_REGION).amazonaws.com"
       '''
     }
   }
 }
+
 
     stage('Build & Push Images') {
       steps {
