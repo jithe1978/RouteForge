@@ -18,12 +18,12 @@ pipeline {
 
 stage('Compute IMAGE_TAG') {
   steps {
-    powershell '''
-      $sha  = (git rev-parse --short HEAD).Trim()
-      $date = Get-Date -Format "yyyyMMdd-HHmm"
-      $Env:IMAGE_TAG = "$sha-$date"
-      Write-Host "IMAGE_TAG = $Env:IMAGE_TAG"
-    '''
+    script {
+      def sha  = powershell(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+      def date = powershell(returnStdout: true, script: 'Get-Date -Format "yyyyMMdd-HHmm"').trim()
+      env.IMAGE_TAG = "${sha}-${date}"
+    }
+    powershell 'Write-Host "IMAGE_TAG = $Env:IMAGE_TAG"'
   }
 }
 
@@ -60,28 +60,30 @@ stage('Login to ECR') {
 stage('Build Backend Image') {
   steps {
     dir('backend') {
-  powershell '''
-    docker build -t ${Env:ECR_BACK}:${Env:IMAGE_TAG} .
-  '''
-}
+      powershell '''
+        docker build -t $Env:ECR_BACK:$Env:IMAGE_TAG .
+      '''
+    }
   }
 }
+
 
 stage('Build Frontend Image') {
   steps {
     dir('frontend') {
-  powershell '''
-    docker build -t ${Env:ECR_FRONT}:${Env:IMAGE_TAG} .
-  '''
-}
+      powershell '''
+        docker build -t $Env:ECR_FRONT:$Env:IMAGE_TAG .
+      '''
+    }
   }
 }
+
 
 stage('Push Images') {
   steps {
     powershell '''
-      docker push ${Env:ECR_BACK}:${Env:IMAGE_TAG}
-      docker push ${Env:ECR_FRONT}:${Env:IMAGE_TAG}
+      docker push $Env:ECR_BACK:$Env:IMAGE_TAG
+      docker push $Env:ECR_FRONT:$Env:IMAGE_TAG
     '''
   }
 }
@@ -101,8 +103,9 @@ stage('Push Images') {
   steps {
     powershell '''
       helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE --create-namespace `
-        --set images.frontend="${Env:ECR_FRONT}:${Env:IMAGE_TAG}" `
-        --set images.backend="${Env:ECR_BACK}:${Env:IMAGE_TAG}"
+        --set images.frontend="$Env:ECR_FRONT:$Env:IMAGE_TAG" `
+        --set images.backend="$Env:ECR_BACK:$Env:IMAGE_TAG" `
+        --atomic --wait --timeout 5m
     '''
   }
 }
