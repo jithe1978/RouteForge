@@ -105,8 +105,15 @@ stage('Push Images') {
 stage('Create Namespace') {
   steps {
     powershell '''
-      # Creates the namespace only if it doesn't exist, and won't fail if it does.
+      $ErrorActionPreference = "Stop"
+      
+      # 1. Idempotently create the namespace
       kubectl create namespace $Env:NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+      
+      # 2. Patch the namespace with Helm metadata to allow the subsequent Helm install
+      kubectl annotate namespace $Env:NAMESPACE "meta.helm.sh/release-name=pdf-app" --overwrite
+      kubectl annotate namespace $Env:NAMESPACE "meta.helm.sh/release-namespace=$Env:NAMESPACE" --overwrite
+      kubectl label namespace $Env:NAMESPACE "app.kubernetes.io/managed-by=Helm" --overwrite
     '''
   }
 }
