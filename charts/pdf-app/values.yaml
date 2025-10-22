@@ -5,15 +5,15 @@ images:
   backend:  "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-backend:prod"
 
 frontend:
-  replicas: 2
+  replicas: 1
   port: 80
 
 backend:
-  replicas: 2
+  replicas: 1
   port: 5000
   storage:
     # Ephemeral pod filesystem; files lost on restart (by design)
-    emptyDirSize: "2Gi"
+    emptyDirSize: "100Mi"
 
 resources:
   frontend:
