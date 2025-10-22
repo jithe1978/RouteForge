@@ -101,10 +101,21 @@ stage('Push Images') {
       }
     }
 
-    stage('Deploy App (Helm)') {
+
+stage('Create Namespace') {
   steps {
     powershell '''
-      helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE --create-namespace `
+      # Creates the namespace only if it doesn't exist, and won't fail if it does.
+      kubectl create namespace $Env:NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+    '''
+  }
+}
+
+// 2. Modified Deployment Stage (Safest Option)
+stage('Deploy App (Helm)') {
+  steps {
+    powershell '''
+      helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE `
         --set images.frontend="$Env:ECR_FRONT:$Env:IMAGE_TAG" `
         --set images.backend="$Env:ECR_BACK:$Env:IMAGE_TAG" `
         --atomic --wait --timeout 5m
