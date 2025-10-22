@@ -81,10 +81,10 @@ stage('Build Frontend Image') {
 
 stage('Push Images') {
   steps {
-    powershell '''
+    powershell """
       docker push ${env.ECR_BACK}:${env.IMAGE_TAG}
       docker push ${env.ECR_FRONT}:${env.IMAGE_TAG}
-    '''
+    """
   }
 }
 
