@@ -132,15 +132,31 @@ stage('Deploy App (Helm)') {
   }
 }
 
-    stage('Deploy Ingress (Helm)') {
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
-          # Reuse your existing ingress chart + the PDF app values file at repo root
-          helm upgrade --install pdfapp-ingress ./$env:CHART_ING
-          kubectl -n $env:NAMESPACE get ingress
-        '''
-      }
-    }
+stage('Deploy Ingress (Helm)') {
+  steps {
+    powershell """
+      $ErrorActionPreference = 'Stop'
+
+      # Resolve an absolute path to the chart in the Jenkins workspace
+      $chart = Join-Path $Env:WORKSPACE $Env:CHART_ING
+      Write-Host "Using ingress chart at: $chart"
+
+      # Show what's there (debug)
+      Get-ChildItem -Force $chart | Format-List Name,Length,LastWriteTime
+      Write-Host '--- Chart.yaml ---'
+      Get-Content (Join-Path $chart 'Chart.yaml')
+
+      # Sanity check the chart
+      helm lint $chart
+
+      # Install/upgrade
+      helm upgrade --install pdfapp-ingress $chart `
+        -n $Env:NAMESPACE --create-namespace `
+        --wait --timeout 5m
+
+      kubectl -n $Env:NAMESPACE get ingress
+    """
+  }
+}
   }
 }
