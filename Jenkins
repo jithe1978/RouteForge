@@ -134,7 +134,7 @@ stage('Deploy App (Helm)') {
 
 stage('Deploy Ingress (Helm)') {
   steps {
-    powershell """
+    powershell '''
       $ErrorActionPreference = 'Stop'
 
       # Resolve an absolute path to the chart in the Jenkins workspace
@@ -155,7 +155,7 @@ stage('Deploy Ingress (Helm)') {
         --wait --timeout 5m
 
       kubectl -n $Env:NAMESPACE get ingress
-    """
+    '''
   }
 }
   }
