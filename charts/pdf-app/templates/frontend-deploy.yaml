@@ -9,6 +9,10 @@ spec:
   template:
     metadata: { labels: { app: frontend } }
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+      {{- end }}
       containers:
         - name: frontend
           image: "{{ .Values.images.frontend.repository }}:{{ .Values.images.frontend.tag }}"

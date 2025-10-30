@@ -1,162 +1,169 @@
 pipeline {
   agent any
+  options { timestamps(); ansiColor('xterm') }
+
   environment {
     AWS_DEFAULT_REGION = 'us-east-2'
     ACCOUNT_ID = '577999460012'
     ECR_FRONT = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-frontend"
     ECR_BACK  = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-backend"
-    CHART_APP = 'charts/pdf-app'      // <-- your new chart path
-    CHART_ING = 'charts/pdfapp-ingress'      // <-- your existing ingress chart path
+
+    CHART_APP = 'charts/pdf-app'
+    CHART_ING = 'charts/pdfapp-ingress'
     NAMESPACE = 'pdfapp'
-    EKS_CLUSTER = 'mern-app-cluster'   // <-- fill this in
+
+    // >>> POINT HELM/KUBECTL AT YOUR KUBEADM CLUSTER <<<
+    // Kube config on your laptop:
+    KUBECONFIG = 'C:\\Users\\jithe\\.kube\\config'
+    // Your working context name:
+    KUBE_CONTEXT = 'ec2'
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
+
+    stage('Checkout') { steps { checkout scm } }
+
+    stage('Compute IMAGE_TAG') {
+      steps {
+        script {
+          def sha  = powershell(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+          def date = powershell(returnStdout: true, script: 'Get-Date -Format "yyyyMMdd-HHmm"').trim()
+          env.IMAGE_TAG = "${sha}-${date}"
+        }
+        powershell 'Write-Host "IMAGE_TAG = $Env:IMAGE_TAG"'
+      }
     }
 
-stage('Compute IMAGE_TAG') {
-  steps {
-    script {
-      def sha  = powershell(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-      def date = powershell(returnStdout: true, script: 'Get-Date -Format "yyyyMMdd-HHmm"').trim()
-      env.IMAGE_TAG = "${sha}-${date}"
+    stage('Echo Vars') {
+      steps {
+        powershell '''
+          Write-Host "ECR_BACK   = $Env:ECR_BACK"
+          Write-Host "ECR_FRONT  = $Env:ECR_FRONT"
+          Write-Host "IMAGE_TAG  = $Env:IMAGE_TAG"
+          Write-Host "KUBECONFIG = $Env:KUBECONFIG"
+          Write-Host "KUBE_CONTEXT = $Env:KUBE_CONTEXT"
+        '''
+      }
     }
-    powershell 'Write-Host "IMAGE_TAG = $Env:IMAGE_TAG"'
-  }
-}
 
-stage('Echo Vars') {
-  steps {
-    powershell '''
-      Write-Host "ECR_BACK   = $Env:ECR_BACK"
-      Write-Host "ECR_FRONT  = $Env:ECR_FRONT"
-      Write-Host "IMAGE_TAG  = $Env:IMAGE_TAG"
-    '''
-  }
-}
-
-
-stage('Login to ECR') {
-  steps {
-    withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
-      powershell '''
-        $ErrorActionPreference = "Stop"
-
-        $acct = (aws sts get-caller-identity --query Account --output text)
-        $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
-
-        $pass = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
-        if (-not $pass) { throw "Empty ECR login password" }
-
-        docker logout $registry 2>$null | Out-Null
-        docker login $registry -u AWS -p $pass
-      '''
+    stage('Login to ECR') {
+      steps {
+        // If you already have AWS CLI configured on the laptop user, you don't need withAWS.
+        // Keep this if you're using Jenkins AWS Credentials named 'aws-creds'.
+        withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
+          powershell '''
+            $ErrorActionPreference = "Stop"
+            $acct = (aws sts get-caller-identity --query Account --output text)
+            $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+            $pass = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+            if (-not $pass) { throw "Empty ECR login password" }
+            docker logout $registry 2>$null | Out-Null
+            docker login $registry -u AWS -p $pass
+          '''
+        }
+      }
     }
-  }
-}
 
-stage('Build Backend Image') {
-  steps {
-    dir('backend') {
-      // Use Groovy interpolation (triple double-quotes)
-      powershell """
-        docker build -t ${env.ECR_BACK}:${env.IMAGE_TAG} .
-      """
+    stage('Build Backend Image') {
+      steps {
+        dir('backend') {
+          powershell """
+            docker build -t ${env.ECR_BACK}:${env.IMAGE_TAG} .
+          """
+        }
+      }
     }
-  }
-}
 
-
-stage('Build Frontend Image') {
-  steps {
-    dir('frontend') {
-      // Use Groovy interpolation (triple double-quotes)
-      powershell """
-        docker build -t ${env.ECR_FRONT}:${env.IMAGE_TAG} .
-      """
+    stage('Build Frontend Image') {
+      steps {
+        dir('frontend') {
+          powershell """
+            docker build -t ${env.ECR_FRONT}:${env.IMAGE_TAG} .
+          """
+        }
+      }
     }
-  }
-}
 
+    stage('Push Images') {
+      steps {
+        powershell """
+          docker push ${env.ECR_BACK}:${env.IMAGE_TAG}
+          docker push ${env.ECR_FRONT}:${env.IMAGE_TAG}
+        """
+      }
+    }
 
-stage('Push Images') {
-  steps {
-    powershell """
-      docker push ${env.ECR_BACK}:${env.IMAGE_TAG}
-      docker push ${env.ECR_FRONT}:${env.IMAGE_TAG}
-    """
-  }
-}
-
-    stage('Update kubeconfig') {
+    // >>> THIS REPLACES YOUR EKS UPDATE STEP <<<
+    stage('Select kube context') {
       steps {
         powershell '''
           $ErrorActionPreference = "Stop"
-          aws eks update-kubeconfig --name $env:EKS_CLUSTER --region $env:AWS_DEFAULT_REGION
-          kubectl version --client
+          # Ensure kubectl talks to the right cluster/context
+          kubectl config use-context $Env:KUBE_CONTEXT
+          kubectl cluster-info
+          kubectl get nodes
           helm version
         '''
       }
     }
 
+    stage('Namespace & ECR pull secret') {
+      steps {
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          # Create/ensure namespace
+          kubectl --context $Env:KUBE_CONTEXT create ns $Env:NAMESPACE --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
 
-stage('Create Namespace') {
-  steps {
-    powershell '''
-      $ErrorActionPreference = "Stop"
-      
-      # 1. Idempotently create the namespace
-      kubectl create namespace $Env:NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
-      
-      # 2. Patch the namespace with Helm metadata to allow the subsequent Helm install
-      kubectl annotate namespace $Env:NAMESPACE "meta.helm.sh/release-name=pdf-app" --overwrite
-      kubectl annotate namespace $Env:NAMESPACE "meta.helm.sh/release-namespace=$Env:NAMESPACE" --overwrite
-      kubectl label namespace $Env:NAMESPACE "app.kubernetes.io/managed-by=Helm" --overwrite
-    '''
+          # (Re)create ECR pull secret so CRI-O can pull private images
+          $pwd = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+          kubectl --context $Env:KUBE_CONTEXT create secret docker-registry ecr-pull `
+            --namespace $Env:NAMESPACE `
+            --docker-server="$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com" `
+            --docker-username=AWS `
+            --docker-password=$pwd `
+            --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
+        '''
+      }
+    }
+
+    stage('Deploy App (Helm)') {
+      steps {
+        powershell '''
+          helm upgrade --install pdf-app $Env:CHART_APP `
+            --namespace $Env:NAMESPACE `
+            --kube-context $Env:KUBE_CONTEXT `
+            --set images.frontend.repository="$Env:ECR_FRONT" `
+            --set images.frontend.tag="$Env:IMAGE_TAG" `
+            --set images.backend.repository="$Env:ECR_BACK" `
+            --set images.backend.tag="$Env:IMAGE_TAG" `
+            --set imagePullSecrets[0].name="ecr-pull" `
+            --wait --timeout 10m
+
+          kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE rollout status deploy/frontend --timeout=180s
+          kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE rollout status deploy/backend  --timeout=180s
+        '''
+      }
+    }
+
+    stage('Deploy Ingress (Helm)') {
+      steps {
+        powershell '''
+          $chart = Join-Path $Env:WORKSPACE $Env:CHART_ING
+          helm lint $chart
+          helm upgrade --install pdfapp-ingress $chart `
+            -n $Env:NAMESPACE `
+            --kube-context $Env:KUBE_CONTEXT `
+            --wait --timeout 5m
+
+          kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE get ingress
+        '''
+      }
+    }
   }
-}
 
-
-stage('Deploy App (Helm)') {
-  steps {
-    powershell '''
-      helm upgrade --install pdf-app charts/pdf-app -n $Env:NAMESPACE `
-        --set images.frontend.repository="$Env:ECR_FRONT" `
-        --set images.frontend.tag="$Env:IMAGE_TAG" `
-        --set images.backend.repository="$Env:ECR_BACK" `
-        --set images.backend.tag="$Env:IMAGE_TAG" `
-        --wait --timeout 10m
-    '''
-  }
-}
-
-stage('Deploy Ingress (Helm)') {
-  steps {
-    powershell '''
-      $ErrorActionPreference = 'Stop'
-
-      # Resolve an absolute path to the chart in the Jenkins workspace
-      $chart = Join-Path $Env:WORKSPACE $Env:CHART_ING
-      Write-Host "Using ingress chart at: $chart"
-
-      # Show what's there (debug)
-      Get-ChildItem -Force $chart | Format-List Name,Length,LastWriteTime
-      Write-Host '--- Chart.yaml ---'
-      Get-Content (Join-Path $chart 'Chart.yaml')
-
-      # Sanity check the chart
-      helm lint $chart
-
-      # Install/upgrade
-      helm upgrade --install pdfapp-ingress $chart `
-        -n $Env:NAMESPACE --create-namespace `
-        --wait --timeout 5m
-
-      kubectl -n $Env:NAMESPACE get ingress
-    '''
-  }
-}
+  post {
+    always {
+      powershell 'docker image prune -f | Out-Null'
+    }
   }
 }

@@ -1,5 +1,6 @@
 namespace: pdfapp
-
+imagePullSecrets:
+  - name: ecr-pull
 images:
   frontend: 
     repository: "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-frontend"
