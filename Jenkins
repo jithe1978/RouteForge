@@ -114,17 +114,20 @@ stage('Generate ECR values (dockerconfigjson)') {
       $pwd      = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
       if (-not $pwd) { throw "Empty ECR login password" }
 
+      # docker config JSON
       $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pwd"))
       $cfg  = @{ auths = @{ $registry = @{ username="AWS"; password=$pwd; email="none"; auth=$auth } } } |
               ConvertTo-Json -Compress
+
+      # base64 of the JSON (what Kubernetes expects under data[".dockerconfigjson"])
+      $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cfg))
 
       $out = @"
 namespace: $Env:NAMESPACE
 imagePullSecret:
   create: true
   name: ecr-pull
-  dockerconfigjson: |
-    $cfg
+  dockerconfigjsonB64: $b64
 "@
       $path = Join-Path $Env:WORKSPACE 'ecr-values.yaml'
       Set-Content -Path $path -Value $out -NoNewline -Encoding ascii
@@ -140,11 +143,11 @@ imagePullSecret:
             --namespace $Env:NAMESPACE `
             --kube-context $Env:KUBE_CONTEXT `
             --create-namespace `
+            -f "$Env:WORKSPACE\\ecr-values.yaml" `
             --set images.frontend.repository="$Env:ECR_FRONT" `
             --set images.frontend.tag="$Env:IMAGE_TAG" `
             --set images.backend.repository="$Env:ECR_BACK" `
             --set images.backend.tag="$Env:IMAGE_TAG" `
-            --set imagePullSecrets[0].name="ecr-pull" `
             --wait --timeout 10m
 
           kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE rollout status deploy/frontend --timeout=180s

@@ -4,6 +4,7 @@ imagePullSecret:
   name: ecr-pull
   # Jenkins will inject this at deploy time; keep it empty in Git
   dockerconfigjson: ""
+  dockerconfigjsonB64: ""   # Jenkins will fill this
 images:
   frontend: 
     repository: "577999460012.dkr.ecr.us-east-2.amazonaws.com/pdf-frontend"
