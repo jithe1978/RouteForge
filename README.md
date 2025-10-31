@@ -135,3 +135,109 @@ kubectl -n pdfapp get certificate
 
 That’s the whole flow you executed—image build & push → EKS deploy via Helm → ingress/TLS with cert-manager → DNS with Route53 → debugged 404/503 via ingress rewrite and Service endpoints—until the app worked end-to-end.
 
+What I built & shipped (story in 60–90 seconds)
+
+Containerized a 2-tier app (Vite/NGINX frontend + Flask/Gunicorn backend).
+
+Pushed versioned images to Amazon ECR using a Git-driven IMAGE_TAG (<git-sha>-<timestamp>).
+
+Deployed to an existing EKS cluster with Helm: one chart for the app (front + back), one chart for ingress.
+
+Reused a cluster-wide ingress-nginx controller; terminated TLS with cert-manager + Let’s Encrypt; routed the domain via Route 53 A-alias.
+
+Served frontend at https://mldevops.org and proxied API as https://mldevops.org/api/* → backend Service :5000 (regex + rewrite).
+
+Chose ephemeral pod filesystem for generated XLSX (no EFS), knowing files get wiped on pod restart — acceptable for my use case.
+
+
+############################################################################################################################################
+What the Jenkins pipeline does (CI/CD)
+
+Yes — the Jenkinsfile you used is both CI and CD.
+
+CI (Continuous Integration):
+
+Checks out code on every push to main.
+
+Computes an immutable IMAGE_TAG.
+
+Logs in to ECR.
+
+Builds Docker images for frontend & backend.
+
+Pushes images to ECR (artifact publishing).
+
+CD (Continuous Delivery/Deployment):
+
+Connects kubectl to EKS.
+
+Ensures namespace exists.
+
+Helm upgrade --install for the app chart, passing the new image tags → triggers rolling updates of Deployments.
+
+Helm upgrade --install for the ingress chart.
+
+Waits for readiness (--wait) and prints status.
+
+
+##################################################################################################################################################################################################
+
+PDF ➜ Excel ➜ Route Optimization (app.mldevops.org)
+
+I just finished a small but end-to-end platform that takes a PDF, extracts tabular data into Excel, and feeds it to Circuit for shortest-route planning — all running on AWS EKS with a clean CI/CD story.
+
+🧩 What I built
+
+Frontend: Vite + NGINX (static)
+
+Backend: Flask + Gunicorn (PDF → XLSX)
+
+Containers & Registry: Docker → Amazon ECR (immutable tags: <git-sha>-<timestamp>)
+
+Orchestration: Amazon EKS (reused existing cluster, nodes, VPC, subnets, security groups)
+
+Deployments: Helm (app chart + separate ingress chart)
+
+Ingress & TLS: ingress-nginx + cert-manager (Let’s Encrypt), Route 53 A-alias → ALB
+
+Storage: Ephemeral pod filesystem (kept it simple; artifacts are transient by design)
+
+CI/CD: Jenkins pipeline builds images, pushes to ECR, then helm upgrade --install for rollout
+
+🔗 Routing model
+
+https://app.mldevops.org → frontend
+
+https://app.mldevops.org/api/* → backend :5000 (regex + rewrite via nginx annotations)
+
+Frontend uses VITE_API_BASE=/api in .env.production so the browser stays decoupled from cluster internals.
+
+🧪 Troubleshooting wins
+
+404 on /api → fixed with use-regex: "true" + rewrite-target and path /api(/|$)(.*)
+
+503 → validated Service Endpoints/labels; rolled out Deployments properly
+
+ACME pending → verified ClusterIssuer + HTTP-01 against nginx ingress class
+
+🧠 Why this design
+
+Immutable tags for traceable, repeatable deploys
+
+Split charts (app vs ingress) for reuse & cleaner change sets
+
+TLS automation (Let’s Encrypt) for zero-touch cert renewals
+
+Ephemeral storage to avoid EFS complexity (business-acceptable data lifetime)
+
+📈 Next up
+
+Post-deploy smoke test (/api/health) in Jenkins
+
+HPA/requests/limits and basic observability (logs/metrics)
+
+ECR retention policy to prune old images
+
+
+
+#AWS #EKS #Kubernetes #Helm #Jenkins #Docker #Nginx #CertManager #LetsEncrypt #Route53 #Flask #Vite #DevOps #CICD #CloudEngineering
