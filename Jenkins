@@ -50,15 +50,30 @@ stage('Login to ECR') {
     withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
       powershell '''
         $ErrorActionPreference = "Stop"
+
         $acct = (aws sts get-caller-identity --query Account --output text)
         $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
 
-        # No -p; pipe to stdin so docker doesn't write the warning to stderr
-        aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $registry
+        # Clean previous session
+        docker logout $registry 2>$null | Out-Null
+
+        # Get token & TRIM CR/LF (PowerShell adds them)
+        $pwd = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+        if (-not $pwd) { throw "Empty ECR login password" }
+        $pwd = $pwd.Trim()
+
+        # Preferred: password-stdin (no warnings, no stderr)
+        try {
+          $pwd | docker login --username AWS --password-stdin $registry
+        } catch {
+          Write-Host "password-stdin failed, retrying once with -p (suppressing warning)..."
+          docker login $registry -u AWS -p $pwd 2>$null
+        }
       '''
     }
   }
 }
+
 
 
 stage('Build Backend Image') {
