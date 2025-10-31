@@ -139,6 +139,7 @@ imagePullSecret:
           helm upgrade --install pdf-app $Env:CHART_APP `
             --namespace $Env:NAMESPACE `
             --kube-context $Env:KUBE_CONTEXT `
+            --create-namespace `
             --set images.frontend.repository="$Env:ECR_FRONT" `
             --set images.frontend.tag="$Env:IMAGE_TAG" `
             --set images.backend.repository="$Env:ECR_BACK" `
