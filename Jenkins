@@ -45,64 +45,43 @@ pipeline {
       }
     }
 
-stage('Login to ECR') {
-  steps {
-    withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
-      powershell '''
-        $ErrorActionPreference = "Stop"
-
-        $acct = (aws sts get-caller-identity --query Account --output text)
-        $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
-
-        # Clean previous session
-        docker logout $registry 2>$null | Out-Null
-
-        # Get token & TRIM CR/LF (PowerShell adds them)
-        $pwd = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
-        if (-not $pwd) { throw "Empty ECR login password" }
-        $pwd = $pwd.Trim()
-
-        # Preferred: password-stdin (no warnings, no stderr)
-        try {
-          $pwd | docker login --username AWS --password-stdin $registry
-        } catch {
-          Write-Host "password-stdin failed, retrying once with -p (suppressing warning)..."
-          docker login $registry -u AWS -p $pwd 2>$null
+    stage('Login to ECR') {
+      steps {
+        // If you already have AWS CLI configured on the laptop user, you don't need withAWS.
+        // Keep this if you're using Jenkins AWS Credentials named 'aws-creds'.
+        withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {
+          powershell '''
+            $ErrorActionPreference = "Stop"
+            $acct = (aws sts get-caller-identity --query Account --output text)
+            $registry = "$acct.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+            $pass = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+            if (-not $pass) { throw "Empty ECR login password" }
+            docker logout $registry 2>$null | Out-Null
+            docker login $registry -u AWS -p $pass
+          '''
         }
-      '''
+      }
     }
-  }
-}
 
-
-
-stage('Build Backend Image') {
-  steps {
-    dir('backend') {
-      powershell '''
-        $ErrorActionPreference = "Stop"
-        Write-Host "CWD: $PWD"
-        Get-ChildItem -Force
-        docker version
-        docker build -t $Env:ECR_BACK:$Env:IMAGE_TAG .
-      '''
+    stage('Build Backend Image') {
+      steps {
+        dir('backend') {
+          powershell """
+            docker build -t ${env.ECR_BACK}:${env.IMAGE_TAG} .
+          """
+        }
+      }
     }
-  }
-}
 
-stage('Build Frontend Image') {
-  steps {
-    dir('frontend') {
-      powershell '''
-        $ErrorActionPreference = "Stop"
-        Write-Host "CWD: $PWD"
-        Get-ChildItem -Force
-        docker version
-        docker build -t $Env:ECR_FRONT:$Env:IMAGE_TAG .
-      '''
+    stage('Build Frontend Image') {
+      steps {
+        dir('frontend') {
+          powershell """
+            docker build -t ${env.ECR_FRONT}:${env.IMAGE_TAG} .
+          """
+        }
+      }
     }
-  }
-}
 
     stage('Push Images') {
       steps {
@@ -128,51 +107,31 @@ stage('Build Frontend Image') {
     }
 stage('Generate ECR values (dockerconfigjson)') {
   steps {
-    withAWS(credentials: 'aws-creds', region: "${env.AWS_DEFAULT_REGION}") {   // <—
-      powershell '''
-        $ErrorActionPreference = "Stop"
-        $registry = "$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
-        $pwd      = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
-        if (-not $pwd) { throw "Empty ECR login password" }
+    powershell '''
+      $ErrorActionPreference = "Stop"
 
-        $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pwd"))
-        $cfg  = @{ auths = @{ $registry = @{ username="AWS"; password=$pwd; email="none"; auth=$auth } } } |
-                ConvertTo-Json -Compress
-        $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cfg))
+      $registry = "$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+      $pwd      = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+      if (-not $pwd) { throw "Empty ECR login password" }
 
-        $out = @"
+      # docker config JSON
+      $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pwd"))
+      $cfg  = @{ auths = @{ $registry = @{ username="AWS"; password=$pwd; email="none"; auth=$auth } } } |
+              ConvertTo-Json -Compress
+
+      # base64 of the JSON (what Kubernetes expects under data[".dockerconfigjson"])
+      $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cfg))
+
+      $out = @"
 namespace: $Env:NAMESPACE
 imagePullSecret:
   create: true
   name: ecr-pull
   dockerconfigjsonB64: $b64
 "@
-        $path = Join-Path $Env:WORKSPACE 'ecr-values.yaml'
-        Set-Content -Path $path -Value $out -NoNewline -Encoding ascii
-        Write-Host "Wrote $path"
-      '''
-    }
-  }
-}
-
-stage('Install ingress-nginx controller') {
-  steps {
-    powershell '''
-      $ErrorActionPreference = "Stop"
-      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
-      helm repo update
-
-      helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
-        --namespace ingress-nginx `
-        --kube-context $Env:KUBE_CONTEXT `
-        --create-namespace `
-        --set controller.service.type=NodePort `
-        --set controller.service.nodePorts.http=30080 `
-        --set controller.service.nodePorts.https=30443 `
-        --set controller.replicaCount=2 `
-        --wait --timeout 10m
-
-      kubectl --context $Env:KUBE_CONTEXT -n ingress-nginx get svc ingress-nginx-controller
+      $path = Join-Path $Env:WORKSPACE 'ecr-values.yaml'
+      Set-Content -Path $path -Value $out -NoNewline -Encoding ascii
+      Write-Host "Wrote $path"
     '''
   }
 }
@@ -196,7 +155,26 @@ stage('Install ingress-nginx controller') {
         '''
       }
     }
+stage('Install ingress-nginx controller') {
+  steps {
+    powershell '''
+      $ErrorActionPreference = "Stop"
+      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
 
+      helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
+        --namespace ingress-nginx `
+        --kube-context $Env:KUBE_CONTEXT `
+        --create-namespace `
+        --set controller.service.type=NodePort `
+        --set controller.service.nodePorts.http=30080 `
+        --set controller.service.nodePorts.https=30443 `
+        --set controller.replicaCount=2 `
+        --wait --timeout 10m
+
+      kubectl --context $Env:KUBE_CONTEXT -n ingress-nginx get svc ingress-nginx-controller
+    '''
+  }
+}
     stage('Deploy Ingress (Helm)') {
       steps {
         powershell '''
@@ -207,7 +185,7 @@ stage('Install ingress-nginx controller') {
           '''
       }
     }
-  }  
+  }
 
   post {
     always {
