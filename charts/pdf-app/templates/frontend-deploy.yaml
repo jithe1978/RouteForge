@@ -9,10 +9,9 @@ spec:
   template:
     metadata: { labels: { app: frontend } }
     spec:
-      {{- with .Values.imagePullSecrets }}
+      {{- if .Values.imagePullSecret.create }}
       imagePullSecrets:
-        - name: ecr-pull
-{{ toYaml . | indent 8 }}
+        - name: {{ .Values.imagePullSecret.name }}
       {{- end }}
       containers:
         - name: frontend

@@ -105,6 +105,34 @@ pipeline {
         '''
       }
     }
+stage('Generate ECR values (dockerconfigjson)') {
+  steps {
+    powershell '''
+      $ErrorActionPreference = "Stop"
+
+      $registry = "$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+      $pwd      = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
+      if (-not $pwd) { throw "Empty ECR login password" }
+
+      # Build docker config JSON (raw, not base64)
+      $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pwd"))
+      $cfg  = @{ auths = @{ $registry = @{ username="AWS"; password=$pwd; email="none"; auth=$auth } } } |
+              ConvertTo-Json -Compress
+
+      # Write a values file for Helm
+      $out = @"
+namespace: $Env:NAMESPACE
+imagePullSecret:
+  create: true
+  name: ecr-pull
+  dockerconfigjson: '$cfg'
+"@
+      $path = Join-Path $Env:WORKSPACE 'ecr-values.yaml'
+      Set-Content -Path $path -Value $out -NoNewline -Encoding ascii
+      Write-Host "Wrote $path"
+    '''
+  }
+}
 
 stage('Ensure ECR pull secret') {
   steps {
@@ -131,6 +159,7 @@ stage('Ensure ECR pull secret') {
         powershell '''
           helm upgrade --install pdf-app $Env:CHART_APP `
             --namespace $Env:NAMESPACE `
+            --create-namespace `
             --kube-context $Env:KUBE_CONTEXT `
             --set images.frontend.repository="$Env:ECR_FRONT" `
             --set images.frontend.tag="$Env:IMAGE_TAG" `
