@@ -167,7 +167,26 @@ imagePullSecret:
       }
     }
   }
+stage('Install ingress-nginx controller') {
+  steps {
+    powershell '''
+      $ErrorActionPreference = "Stop"
+      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
 
+      helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
+        --namespace ingress-nginx `
+        --kube-context $Env:KUBE_CONTEXT `
+        --create-namespace `
+        --set controller.service.type=NodePort `
+        --set controller.service.nodePorts.http=30080 `
+        --set controller.service.nodePorts.https=30443 `
+        --set controller.replicaCount=2 `
+        --wait --timeout 10m
+
+      kubectl --context $Env:KUBE_CONTEXT -n ingress-nginx get svc ingress-nginx-controller
+    '''
+  }
+}
   post {
     always {
       powershell 'docker image prune -f | Out-Null'
