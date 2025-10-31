@@ -106,24 +106,25 @@ pipeline {
       }
     }
 
-    stage('Namespace & ECR pull secret') {
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
-          # Create/ensure namespace
-          kubectl --context $Env:KUBE_CONTEXT create ns $Env:NAMESPACE --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
+stage('Ensure ECR pull secret') {
+  steps {
+    powershell '''
+      $ErrorActionPreference = "Stop"
+      $REG="$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
+      $PWD = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
 
-          # (Re)create ECR pull secret so CRI-O can pull private images
-          $pwd = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
-          kubectl --context $Env:KUBE_CONTEXT create secret docker-registry ecr-pull `
-            --namespace $Env:NAMESPACE `
-            --docker-server="$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com" `
-            --docker-username=AWS `
-            --docker-password=$pwd `
-            --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
-        '''
-      }
-    }
+      # (Re)create the docker-registry secret named ecr-pull in pdfapp
+      kubectl --context $Env:KUBE_CONTEXT create namespace $Env:NAMESPACE --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
+
+      kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE create secret docker-registry ecr-pull `
+        --docker-server=$REG `
+        --docker-username=AWS `
+        --docker-password=$PWD `
+        --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
+    '''
+  }
+}
+
 
     stage('Deploy App (Helm)') {
       steps {

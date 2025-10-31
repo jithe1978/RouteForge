@@ -11,6 +11,7 @@ spec:
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
+        - name: ecr-pull
 {{ toYaml . | indent 8 }}
       {{- end }}
       containers:
