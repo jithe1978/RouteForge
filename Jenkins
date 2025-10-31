@@ -134,26 +134,6 @@ imagePullSecret:
   }
 }
 
-stage('Ensure ECR pull secret') {
-  steps {
-    powershell '''
-      $ErrorActionPreference = "Stop"
-      $REG="$Env:ACCOUNT_ID.dkr.ecr.$Env:AWS_DEFAULT_REGION.amazonaws.com"
-      $PWD = aws ecr get-login-password --region $Env:AWS_DEFAULT_REGION
-
-      # (Re)create the docker-registry secret named ecr-pull in pdfapp
-      kubectl --context $Env:KUBE_CONTEXT create namespace $Env:NAMESPACE --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
-
-      kubectl --context $Env:KUBE_CONTEXT -n $Env:NAMESPACE create secret docker-registry ecr-pull `
-        --docker-server=$REG `
-        --docker-username=AWS `
-        --docker-password=$PWD `
-        --dry-run=client -o yaml | kubectl --context $Env:KUBE_CONTEXT apply -f -
-    '''
-  }
-}
-
-
     stage('Deploy App (Helm)') {
       steps {
         powershell '''
