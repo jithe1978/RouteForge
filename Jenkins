@@ -7,16 +7,13 @@ pipeline {
     ACCOUNT_ID = '577999460012'
     ECR_FRONT = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-frontend"
     ECR_BACK  = "${ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/pdf-backend"
-    KUBECONFIG = 'ec2.yaml' 
-    // Your working context name:
-    KUBE_CONTEXT = 'ec2'
     CHART_APP = 'charts/pdf-app'
     CHART_ING = 'charts/pdfapp-ingress'
     NAMESPACE = 'pdfapp'
 
     // >>> POINT HELM/KUBECTL AT YOUR KUBEADM CLUSTER <<<
     // Kube config on your laptop:
-    KUBECONFIG = 'C:\\Users\\jithe\\.kube\\config'
+    KUBECONFIG = 'C:\\Users\\jithe\\.kube\\ec2.yaml'
     // Your working context name:
     KUBE_CONTEXT = 'ec2'
   }
